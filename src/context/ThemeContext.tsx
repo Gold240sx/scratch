@@ -244,9 +244,15 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     applyLayoutCSSVariables(textDirection, editorWidth);
   }, [textDirection, editorWidth]);
 
-  // Apply interface zoom whenever it changes
+  // Apply interface zoom whenever it changes (suppress transitions during zoom)
   useEffect(() => {
-    document.documentElement.style.zoom = String(interfaceZoom);
+    const root = document.documentElement;
+    root.classList.add("zoom-no-transition");
+    root.style.zoom = String(interfaceZoom);
+    const raf = requestAnimationFrame(() => {
+      root.classList.remove("zoom-no-transition");
+    });
+    return () => cancelAnimationFrame(raf);
   }, [interfaceZoom]);
 
   // Save font settings to backend
@@ -330,20 +336,23 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
           typeof zoomOrUpdater === "function"
             ? zoomOrUpdater(prev)
             : zoomOrUpdater;
-        const clamped = Math.min(Math.max(raw, 0.7), 1.5);
-        // Persist asynchronously
-        getSettings()
-          .then((settings) =>
-            updateSettings({ ...settings, interfaceZoom: clamped }),
-          )
-          .catch((error) =>
-            console.error("Failed to save interface zoom:", error),
-          );
-        return clamped;
+        return Math.round(Math.min(Math.max(raw, 0.7), 1.5) * 20) / 20;
       });
     },
     [],
   );
+
+  // Persist interface zoom changes to backend
+  useEffect(() => {
+    if (!isInitialized) return;
+    getSettings()
+      .then((settings) =>
+        updateSettings({ ...settings, interfaceZoom }),
+      )
+      .catch((error) =>
+        console.error("Failed to save interface zoom:", error),
+      );
+  }, [interfaceZoom, isInitialized]);
 
   // Don't render until initialized to prevent flash
   if (!isInitialized) {

@@ -69,7 +69,7 @@ export function AppearanceSettingsSection() {
     editorFontSettings.lineHeight !== 1.6 ||
     textDirection !== "ltr" ||
     editorWidth !== "normal" ||
-    interfaceZoom !== 1.0;
+    Math.round(interfaceZoom * 100) !== 100;
 
   // Filter weight options based on font family
   const isMonospace = editorFontSettings.baseFontFamily === "monospace";
