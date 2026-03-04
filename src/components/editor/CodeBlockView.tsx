@@ -55,7 +55,7 @@ export function CodeBlockView({ node, updateAttributes }: ReactNodeViewProps) {
             </option>
           ))}
         </select>
-        <ChevronDownIcon className="w-3 h-3 absolute right-0.5 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted" />
+        <ChevronDownIcon className="w-3.25 h-3.25 stroke-[1.7] absolute right-1.25 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted" />
       </div>
     </div>
   );
