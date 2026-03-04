@@ -23,7 +23,7 @@ export function CodeBlockView({ node, updateAttributes }: ReactNodeViewProps) {
       <button
         contentEditable={false}
         onClick={() => setShowSource(false)}
-        className="code-block-mermaid-btn inline-flex items-center gap-1 text-xs px-1.5 py-0.5 text-text-muted rounded cursor-pointer transition-colors hover:text-text hover:bg-bg-emphasis"
+        className="code-block-mermaid-btn inline-flex items-center gap-1 text-xs leading-normal px-1.5 py-0.5 text-text-muted rounded cursor-pointer transition-colors hover:text-text hover:bg-bg-emphasis"
         type="button"
       >
         <EyeIcon className="w-3.5 h-3.5 stroke-[1.7]" />
@@ -33,7 +33,7 @@ export function CodeBlockView({ node, updateAttributes }: ReactNodeViewProps) {
       <button
         contentEditable={false}
         onClick={() => setShowSource(true)}
-        className="code-block-mermaid-btn inline-flex items-center gap-1 text-xs px-1.5 py-0.5 text-text-muted rounded cursor-pointer transition-colors hover:text-text hover:bg-bg-emphasis"
+        className="code-block-mermaid-btn inline-flex items-center gap-1 text-xs leading-normal px-1.5 py-0.5 text-text-muted rounded cursor-pointer transition-colors hover:text-text hover:bg-bg-emphasis"
         type="button"
       >
         <PencilIcon className="w-3.5 h-3.5 stroke-[1.7]" />
@@ -49,7 +49,7 @@ export function CodeBlockView({ node, updateAttributes }: ReactNodeViewProps) {
         <select
           value={language}
           onChange={handleLanguageChange}
-          className="appearance-none bg-transparent text-text-muted text-xs cursor-pointer outline-none pr-4 pl-1.5 py-0.5 rounded hover:bg-bg-emphasis transition-colors"
+          className="appearance-none bg-transparent text-text-muted text-xs leading-normal cursor-pointer outline-none pr-4 pl-1.5 py-0.5 rounded hover:bg-bg-emphasis transition-colors"
         >
           {SUPPORTED_LANGUAGES.map((lang) => (
             <option key={lang.value} value={lang.value}>
