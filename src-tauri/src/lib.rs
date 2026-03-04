@@ -2505,7 +2505,8 @@ async fn ai_execute_ollama(
     }
 
     // Read the current file content
-    let file_content = std::fs::read_to_string(&canonical)
+    let file_content = tokio::fs::read_to_string(&canonical)
+        .await
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
     let stdin_input = format!(
@@ -2554,8 +2555,6 @@ async fn ai_execute_ollama(
         }
     }
 
-    let canonical_str = canonical.to_string_lossy().to_string();
-
     let result = execute_ai_cli(
         "Ollama",
         "ollama".to_string(),
@@ -2572,18 +2571,24 @@ async fn ai_execute_ollama(
                 return Ok(AiExecutionResult {
                     success: false,
                     output: String::new(),
-                    error: Some(format!(
-                        "Authentication required. Run `ollama login` in your terminal to sign in."
-                    )),
+                    error: Some("Authentication required. Run `ollama login` in your terminal to sign in.".to_string()),
                 });
             }
         }
     }
 
     // If successful, write the output back to the file
-    if result.success && !result.output.is_empty() {
+    if result.success {
         let edited_content = result.output.trim().to_string();
-        std::fs::write(&canonical_str, &edited_content)
+        if edited_content.is_empty() {
+            return Ok(AiExecutionResult {
+                success: false,
+                output: String::new(),
+                error: Some("Ollama returned empty output. Please try again.".to_string()),
+            });
+        }
+        tokio::fs::write(&canonical, edited_content.as_bytes())
+            .await
             .map_err(|e| format!("Failed to write edited file: {}", e))?;
 
         Ok(AiExecutionResult {
