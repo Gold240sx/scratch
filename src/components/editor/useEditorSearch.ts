@@ -218,16 +218,14 @@ export function useEditorSearch({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [editor, currentNoteId, openEditorSearch]);
 
-  // Clear search on note switch
+  // Clear search on note switch (including when no note is selected)
   useEffect(() => {
-    if (currentNoteId) {
-      setSearchOpen(false);
-      setSearchQuery("");
-      setSearchMatches([]);
-      setCurrentMatchIndex(0);
-      if (editor) {
-        updateSearchDecorations([], 0, editor);
-      }
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchMatches([]);
+    setCurrentMatchIndex(0);
+    if (editor) {
+      updateSearchDecorations([], 0, editor);
     }
   }, [currentNoteId, editor, updateSearchDecorations]);
 

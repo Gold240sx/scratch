@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { type Editor as TiptapEditor } from "@tiptap/react";
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+import { toast } from "sonner";
 
 export function useTableContextMenu(
   editor: TiptapEditor | null,
@@ -170,6 +171,7 @@ export function useTableContextMenu(
         await menu.popup();
       } catch (err) {
         console.error("Table context menu error:", err);
+        toast.error("Failed to open table menu");
       }
     },
     [editor],

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState, type RefObject } from "react";
 import { type Editor as TiptapEditor } from "@tiptap/react";
+import { toast } from "sonner";
 
 interface UseNoteSavingOptions {
   currentNote: {
@@ -126,9 +127,14 @@ export function useNoteSaving({
       if (editorRef.current) {
         needsSaveRef.current = false;
         const markdown = getMarkdown(editorRef.current);
-        await saveImmediately(savingNoteId, markdown);
+        try {
+          await saveImmediately(savingNoteId, markdown);
+        } catch (error) {
+          console.error("Auto-save failed:", error);
+          toast.error("Failed to save note");
+        }
       }
-    }, 500);
+    }, 300);
   }, [saveImmediately, getMarkdown, currentNote?.id]);
 
   // Scroll to top on mount
@@ -142,13 +148,13 @@ export function useNoteSaving({
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
-      if (needsSaveRef.current && editorRef.current) {
+      if (needsSaveRef.current && editorRef.current && loadedNoteIdRef.current) {
         needsSaveRef.current = false;
         const manager = editorRef.current.storage.markdown?.manager;
         const markdown = manager
           ? manager.serialize(editorRef.current.getJSON())
           : editorRef.current.getText();
-        saveNote(markdown);
+        saveNote(markdown, loadedNoteIdRef.current);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

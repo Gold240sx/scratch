@@ -421,12 +421,17 @@ export function usePopupManager({
         const relativePath = await invoke<string>("copy_image_to_assets", {
           sourcePath: selected as string,
         });
-        const notesFolder = await invoke<string>("get_notes_folder");
+        const notesFolder = await invoke<string | null>("get_notes_folder");
+        if (!notesFolder) {
+          toast.error("No notes folder configured");
+          return;
+        }
         const absolutePath = await join(notesFolder, relativePath);
         const assetUrl = convertFileSrc(absolutePath);
         editor.chain().focus().setImage({ src: assetUrl }).run();
       } catch (error) {
         console.error("Failed to add image:", error);
+        toast.error("Failed to add image");
       }
     }
   }, []);

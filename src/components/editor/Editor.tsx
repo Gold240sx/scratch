@@ -172,9 +172,10 @@ export function Editor({
         .then(setSettings)
         .catch((error) => {
           console.error("Failed to load settings:", error);
+          toast.error("Failed to load settings");
         });
     }
-  }, [currentNote?.id, notes, previewMode]);
+  }, [currentNote?.id, previewMode]);
 
   const isPinned =
     settings?.pinnedNoteIds?.includes(currentNote?.id || "") || false;

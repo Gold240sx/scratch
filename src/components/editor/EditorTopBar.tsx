@@ -1,4 +1,5 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { toast } from "sonner";
 import { mod, shift, isMac } from "../../lib/platform";
 import { cn } from "../../lib/utils";
 import { IconButton, Tooltip } from "../ui";
@@ -123,7 +124,14 @@ export function EditorTopBar({
             content={`External changes detected (${mod}${isMac ? "" : "+"}R to refresh)`}
           >
             <button
-              onClick={onReload}
+              onClick={async () => {
+                try {
+                  await onReload();
+                } catch (error) {
+                  console.error("Failed to reload note:", error);
+                  toast.error("Failed to reload note");
+                }
+              }}
               className="h-7 px-2 flex items-center gap-1 text-xs text-text-muted hover:bg-bg-emphasis rounded transition-colors font-medium"
             >
               <RefreshCwIcon className="w-4 h-4 stroke-[1.6]" />
@@ -157,6 +165,7 @@ export function EditorTopBar({
                   await onSettingsReload();
                 } catch (error) {
                   console.error("Failed to pin/unpin note:", error);
+                  toast.error(isPinned ? "Failed to unpin note" : "Failed to pin note");
                 }
               }}
             >

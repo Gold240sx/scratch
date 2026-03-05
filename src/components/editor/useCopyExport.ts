@@ -92,7 +92,7 @@ export function useCopyExport({
   // Keyboard shortcut for Cmd+Shift+C to open copy menu
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "c") {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "c") {
         e.preventDefault();
         setCopyMenuOpen(true);
       }

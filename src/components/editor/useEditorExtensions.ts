@@ -117,7 +117,8 @@ export function useEditorExtensions({
       },
       handleKeyDown: (_view, event) => {
         if (event.key === "Tab") {
-          return false;
+          event.preventDefault();
+          return true;
         }
         return false;
       },
@@ -141,7 +142,11 @@ export function useEditorExtensions({
                   "save_clipboard_image",
                   { base64Data: base64 },
                 );
-                const notesFolder = await invoke<string>("get_notes_folder");
+                const notesFolder = await invoke<string | null>("get_notes_folder");
+                if (!notesFolder) {
+                  toast.error("No notes folder configured");
+                  return;
+                }
                 const absolutePath = await join(notesFolder, relativePath);
                 const assetUrl = convertFileSrc(absolutePath);
 
