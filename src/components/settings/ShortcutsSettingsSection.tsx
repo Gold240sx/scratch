@@ -23,6 +23,11 @@ const shortcuts: Shortcut[] = [
     category: "Notes",
   },
   {
+    keys: [mod, "Shift", "N"],
+    description: "Create new folder",
+    category: "Notes",
+  },
+  {
     keys: [mod, "D"],
     description: "Duplicate current note",
     category: "Notes",

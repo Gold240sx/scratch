@@ -266,6 +266,22 @@ export function GeneralSettingsSection() {
       {/* Divider */}
       <div className="border-t border-border border-dashed" />
 
+      {/* Folder View Section */}
+      <section className="pb-2">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-0.75">
+            <h2 className="text-xl font-medium">Folder View</h2>
+            <p className="text-sm text-text-muted">
+              Organize notes in a collapsible folder tree in the sidebar
+            </p>
+          </div>
+          <FolderViewToggle />
+        </div>
+      </section>
+
+      {/* Divider */}
+      <div className="border-t border-border border-dashed" />
+
       {/* Git Section */}
       <section className="pb-2">
         <div className="flex items-start justify-between gap-4 mb-4">
@@ -695,6 +711,54 @@ const AI_PROVIDER_INFO: Record<
     installUrl: "https://ollama.com",
   },
 };
+
+function FolderViewToggle() {
+  const [foldersEnabled, setFoldersEnabled] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  useEffect(() => {
+    invoke<Settings>("get_settings").then((s) => {
+      setFoldersEnabled(s.foldersEnabled === true);
+    });
+  }, []);
+
+  const handleToggle = async (enabled: boolean) => {
+    if (isUpdating) return;
+    setIsUpdating(true);
+    try {
+      const settings = await invoke<Settings>("get_settings");
+      await invoke("update_settings", {
+        newSettings: { ...settings, foldersEnabled: enabled },
+      });
+      setFoldersEnabled(enabled);
+    } catch {
+      toast.error("Failed to update folder view setting");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-1 p-1 rounded-[10px] border border-border">
+      <Button
+        onClick={() => handleToggle(false)}
+        variant={!foldersEnabled ? "primary" : "ghost"}
+        size="xs"
+        disabled={isUpdating}
+      >
+        Off
+      </Button>
+      <Button
+        onClick={() => handleToggle(true)}
+        variant={foldersEnabled ? "primary" : "ghost"}
+        size="xs"
+        disabled={isUpdating}
+      >
+        On
+      </Button>
+    </div>
+  );
+}
 
 function RemoteInstructions() {
   return (

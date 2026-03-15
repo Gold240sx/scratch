@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useNotes } from "../../context/NotesContext";
 import { NoteList } from "../notes/NoteList";
 import { Footer } from "./Footer";
@@ -8,19 +9,42 @@ import {
   XIcon,
   SearchIcon,
   SearchOffIcon,
+  AddNoteIcon,
+  FolderPlusIcon,
 } from "../icons";
 import { mod, shift, isMac } from "../../lib/platform";
+import * as notesService from "../../services/notes";
+import { FolderNameDialog } from "../notes/FolderNameDialog";
 
 interface SidebarProps {
   onOpenSettings?: () => void;
 }
 
 export function Sidebar({ onOpenSettings }: SidebarProps) {
-  const { createNote, notes, search, searchQuery, clearSearch } = useNotes();
+  const {
+    createNote,
+    createFolder,
+    notes,
+    search,
+    searchQuery,
+    clearSearch,
+    activeFolderPath,
+  } = useNotes();
   const [searchOpen, setSearchOpen] = useState(false);
   const [inputValue, setInputValue] = useState(searchQuery);
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [folderDialogParent, setFolderDialogParent] = useState("");
+  const [foldersEnabled, setFoldersEnabled] = useState(true);
   const debounceRef = useRef<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Load folders setting
+  useEffect(() => {
+    notesService.getSettings().then((s) => {
+      setFoldersEnabled(s.foldersEnabled === true);
+    });
+  }, []);
 
   // Sync input with search query
   useEffect(() => {
@@ -100,6 +124,32 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
     clearSearch();
   }, [clearSearch]);
 
+  const handleNewFolder = useCallback(() => {
+    setFolderDialogParent("");
+    setFolderDialogOpen(true);
+  }, []);
+
+  const handleFolderDialogConfirm = useCallback(
+    async (name: string) => {
+      await createFolder(folderDialogParent, name);
+      setFolderDialogOpen(false);
+    },
+    [createFolder, folderDialogParent]
+  );
+
+  // Listen for create-new-folder event (from command palette / keyboard shortcut)
+  useEffect(() => {
+    const handleCreateFolder = () => {
+      setFolderDialogParent(activeFolderPath ?? "");
+      setFolderDialogOpen(true);
+    };
+
+    window.addEventListener("create-new-folder", handleCreateFolder);
+    return () =>
+      window.removeEventListener("create-new-folder", handleCreateFolder);
+  }, [activeFolderPath]);
+
+
   return (
     <div className="relative w-64 h-full bg-bg-secondary border-r border-border flex flex-col select-none">
       {/* Drag region */}
@@ -122,13 +172,49 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
               <SearchIcon className="w-4.25 h-4.25 stroke-[1.5]" />
             )}
           </IconButton>
-          <IconButton
-            variant="ghost"
-            onClick={createNote}
-            title={`New Note (${mod}${isMac ? "" : "+"}N)`}
-          >
-            <PlusIcon className="w-5.25 h-5.25 stroke-[1.4]" />
-          </IconButton>
+          {foldersEnabled ? (
+            <DropdownMenu.Root open={plusMenuOpen} onOpenChange={setPlusMenuOpen}>
+              <DropdownMenu.Trigger asChild>
+                <IconButton
+                  variant="ghost"
+                  title={`New Note (${mod}${isMac ? "" : "+"}N)`}
+                >
+                  <PlusIcon className="w-5.25 h-5.25 stroke-[1.4]" />
+                </IconButton>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  className="min-w-40 bg-bg border border-border rounded-md shadow-lg py-1 z-50"
+                  sideOffset={5}
+                  align="end"
+                  onCloseAutoFocus={(e) => e.preventDefault()}
+                >
+                  <DropdownMenu.Item
+                    className="px-3 py-1.5 text-sm text-text cursor-pointer outline-none hover:bg-bg-muted focus:bg-bg-muted flex items-center gap-2"
+                    onSelect={() => createNote()}
+                  >
+                    <AddNoteIcon className="w-4 h-4 stroke-[1.6]" />
+                    New Note
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    className="px-3 py-1.5 text-sm text-text cursor-pointer outline-none hover:bg-bg-muted focus:bg-bg-muted flex items-center gap-2"
+                    onSelect={handleNewFolder}
+                  >
+                    <FolderPlusIcon className="w-4 h-4 stroke-[1.6]" />
+                    New Folder
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          ) : (
+            <IconButton
+              variant="ghost"
+              onClick={() => createNote()}
+              title={`New Note (${mod}${isMac ? "" : "+"}N)`}
+            >
+              <PlusIcon className="w-5.25 h-5.25 stroke-[1.4]" />
+            </IconButton>
+          )}
         </div>
       </div>
       {/* Scrollable area with search and notes */}
@@ -165,6 +251,16 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
 
       {/* Footer with git status, commit, and settings */}
       <Footer onOpenSettings={onOpenSettings} />
+
+      {/* Folder name dialog */}
+      <FolderNameDialog
+        open={folderDialogOpen}
+        onOpenChange={setFolderDialogOpen}
+        onConfirm={handleFolderDialogConfirm}
+        title="New Folder"
+        description="Enter a name for the new folder"
+        confirmLabel="Create"
+      />
     </div>
   );
 }

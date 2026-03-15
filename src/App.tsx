@@ -282,6 +282,17 @@ function AppContent() {
         return;
       }
 
+      // Cmd+Shift+N - New folder (must check before Cmd+N)
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "n"
+      ) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("create-new-folder"));
+        return;
+      }
+
       // Cmd+N - New note
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
         e.preventDefault();
@@ -372,12 +383,13 @@ function AppContent() {
     // Disable right-click context menu except in editor
     const handleContextMenu = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // Allow context menu in editor (prose class) and inputs
+      // Allow context menu in editor (prose class), inputs, and note list sidebar
       const isInEditor =
         target.closest(".prose") || target.closest(".ProseMirror");
       const isInput =
         target.tagName === "INPUT" || target.tagName === "TEXTAREA";
-      if (!isInEditor && !isInput) {
+      const isInNoteList = target.closest("[data-note-list]");
+      if (!isInEditor && !isInput && !isInNoteList) {
         e.preventDefault();
       }
     };

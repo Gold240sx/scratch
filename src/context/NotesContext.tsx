@@ -27,6 +27,7 @@ interface NotesDataContextValue {
   isSearching: boolean;
   hasExternalChanges: boolean;
   reloadVersion: number;
+  activeFolderPath: string | null;
 }
 
 // Actions context: stable references, rarely causes re-renders
@@ -44,6 +45,11 @@ interface NotesActionsContextValue {
   clearSearch: () => void;
   pinNote: (id: string) => Promise<void>;
   unpinNote: (id: string) => Promise<void>;
+  createNoteInFolder: (folderPath: string) => Promise<void>;
+  createFolder: (parentPath: string, name: string) => Promise<void>;
+  deleteFolder: (path: string) => Promise<void>;
+  renameFolder: (oldPath: string, newName: string) => Promise<void>;
+  setActiveFolderPath: (path: string | null) => void;
 }
 
 const NotesDataContext = createContext<NotesDataContextValue | null>(null);
@@ -60,6 +66,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasExternalChanges, setHasExternalChanges] = useState(false);
+  const [activeFolderPath, setActiveFolderPath] = useState<string | null>(null);
   // Increments when user manually refreshes, so Editor knows to reload content
   const [reloadVersion, setReloadVersion] = useState(0);
 
@@ -110,6 +117,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       // Set selected ID immediately for responsive UI
       setSelectedNoteId(id);
       setHasExternalChanges(false);
+      // Update active folder from note's parent path
+      const lastSlash = id.lastIndexOf("/");
+      setActiveFolderPath(lastSlash > 0 ? id.substring(0, lastSlash) : null);
       const note = await notesService.readNote(id);
       if (requestId !== selectRequestIdRef.current) return;
       setCurrentNote(note);
@@ -133,7 +143,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   const createNote = useCallback(async () => {
     try {
-      const note = await notesService.createNote();
+      const note = await notesService.createNote(activeFolderPath ?? undefined);
       selectRequestIdRef.current += 1;
       pendingNewNoteIdRef.current = note.id;
       // Mark as recently saved to ignore file-change events from our own creation
@@ -150,7 +160,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create note");
     }
-  }, [refreshNotes]);
+  }, [refreshNotes, activeFolderPath]);
 
   const consumePendingNewNote = useCallback((id: string) => {
     if (pendingNewNoteIdRef.current !== id) {
@@ -314,6 +324,81 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         await refreshNotes();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to unpin note");
+      }
+    },
+    [refreshNotes]
+  );
+
+  const createNoteInFolder = useCallback(
+    async (folderPath: string) => {
+      try {
+        const note = await notesService.createNote(folderPath);
+        selectRequestIdRef.current += 1;
+        pendingNewNoteIdRef.current = note.id;
+        recentlySavedRef.current.add(note.id);
+        await refreshNotes();
+        setCurrentNote(note);
+        setSelectedNoteId(note.id);
+        setSearchQuery("");
+        setSearchResults([]);
+        setTimeout(() => {
+          recentlySavedRef.current.delete(note.id);
+        }, 1000);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to create note"
+        );
+      }
+    },
+    [refreshNotes]
+  );
+
+  const createFolderAction = useCallback(
+    async (parentPath: string, name: string) => {
+      try {
+        const fullPath = parentPath ? `${parentPath}/${name}` : name;
+        await notesService.createFolder(fullPath);
+        await refreshNotes();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to create folder"
+        );
+      }
+    },
+    [refreshNotes]
+  );
+
+  const deleteFolderAction = useCallback(
+    async (path: string) => {
+      try {
+        await notesService.deleteFolder(path);
+        // If the selected note was inside the deleted folder, clear selection
+        setSelectedNoteId((prevId) => {
+          if (prevId && prevId.startsWith(path + "/")) {
+            setCurrentNote(null);
+            return null;
+          }
+          return prevId;
+        });
+        await refreshNotes();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to delete folder"
+        );
+      }
+    },
+    [refreshNotes]
+  );
+
+  const renameFolderAction = useCallback(
+    async (oldPath: string, newName: string) => {
+      try {
+        await notesService.renameFolder(oldPath, newName);
+        await refreshNotes();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to rename folder"
+        );
       }
     },
     [refreshNotes]
@@ -493,6 +578,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       isSearching,
       hasExternalChanges,
       reloadVersion,
+      activeFolderPath,
     }),
     [
       notes,
@@ -506,6 +592,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       isSearching,
       hasExternalChanges,
       reloadVersion,
+      activeFolderPath,
     ]
   );
 
@@ -525,6 +612,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       clearSearch,
       pinNote,
       unpinNote,
+      createNoteInFolder,
+      createFolder: createFolderAction,
+      deleteFolder: deleteFolderAction,
+      renameFolder: renameFolderAction,
+      setActiveFolderPath,
     }),
     [
       selectNote,
@@ -540,6 +632,10 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       clearSearch,
       pinNote,
       unpinNote,
+      createNoteInFolder,
+      createFolderAction,
+      deleteFolderAction,
+      renameFolderAction,
     ]
   );
 
