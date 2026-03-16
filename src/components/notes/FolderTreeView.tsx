@@ -1,11 +1,13 @@
 import { useCallback, useMemo, useState, useEffect, useRef, memo } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import {
-  useDroppable,
-  useDraggable,
-} from "@dnd-kit/core";
+import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { useNotes } from "../../context/NotesContext";
-import { buildFolderTree, countNotesInFolder } from "../../lib/folderTree";
+import {
+  buildFolderTree,
+  countNotesInFolder,
+  getVisibleItems,
+  type TreeItem,
+} from "../../lib/folderTree";
 import { FolderNameDialog } from "./FolderNameDialog";
 import { cleanTitle } from "../../lib/utils";
 import { toast } from "sonner";
@@ -30,6 +32,7 @@ import {
   NoteIcon,
   PinIcon,
   CopyIcon,
+  ArrowUpIcon,
 } from "../icons";
 import * as notesService from "../../services/notes";
 import type { FolderNode, NoteMetadata, Settings } from "../../types/note";
@@ -69,6 +72,8 @@ interface FileItemProps {
   onUnpin: (id: string) => Promise<void>;
   onDuplicate: (id: string) => Promise<void>;
   onDelete: (id: string) => void;
+  onMoveToParent?: (id: string, targetFolder: string) => void;
+  focusedItemKey?: string | null;
 }
 
 const FileItem = memo(function FileItem({
@@ -81,6 +86,8 @@ const FileItem = memo(function FileItem({
   onUnpin,
   onDuplicate,
   onDelete,
+  onMoveToParent,
+  focusedItemKey,
 }: FileItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
   const handleClick = useCallback(() => onSelect(note.id), [onSelect, note.id]);
@@ -148,7 +155,7 @@ const FileItem = memo(function FileItem({
               ? "opacity-40"
               : isOver
                 ? "bg-accent/10 ring-1 ring-accent"
-                : isSelected
+                : isSelected && (!focusedItemKey || focusedItemKey === `note:${note.id}`)
                   ? "bg-bg-muted group-focus/notelist:ring-1 group-focus/notelist:ring-text-muted"
                   : "hover:bg-bg-muted"
           }`}
@@ -187,6 +194,26 @@ const FileItem = memo(function FileItem({
             <CopyIcon className="w-4 h-4 stroke-[1.6]" />
             Copy Filepath
           </ContextMenu.Item>
+          {noteParentFolder && onMoveToParent && (
+            <>
+              <ContextMenu.Separator className={menuSeparatorClass} />
+              <ContextMenu.Item
+                className={menuItemClass}
+                onSelect={() => {
+                  const parentOfParent = noteParentFolder.includes("/")
+                    ? noteParentFolder.substring(
+                        0,
+                        noteParentFolder.lastIndexOf("/"),
+                      )
+                    : "";
+                  onMoveToParent(note.id, parentOfParent);
+                }}
+              >
+                <ArrowUpIcon className="w-4 h-4 stroke-[1.6]" />
+                Move to Parent Folder
+              </ContextMenu.Item>
+            </>
+          )}
           <ContextMenu.Separator className={menuSeparatorClass} />
           <ContextMenu.Item
             className={
@@ -212,6 +239,7 @@ interface FolderItemProps {
   selectedNoteId: string | null;
   pinnedIds: Set<string>;
   onSelectNote: (id: string) => void;
+  focusedItemKey: string | null;
   onCreateNoteHere: (path: string) => void;
   onNewSubfolder: (parentPath: string) => void;
   onRenameFolder: (path: string, currentName: string) => void;
@@ -220,6 +248,8 @@ interface FolderItemProps {
   onUnpinNote: (id: string) => Promise<void>;
   onDuplicateNote: (id: string) => Promise<void>;
   onDeleteNote: (id: string) => void;
+  onMoveNoteToParent: (id: string, targetFolder: string) => void;
+  onMoveFolderToParent: (path: string, targetParent: string) => void;
 }
 
 const FolderItemComponent = memo(function FolderItem({
@@ -230,6 +260,7 @@ const FolderItemComponent = memo(function FolderItem({
   selectedNoteId,
   pinnedIds,
   onSelectNote,
+  focusedItemKey,
   onCreateNoteHere,
   onNewSubfolder,
   onRenameFolder,
@@ -238,10 +269,13 @@ const FolderItemComponent = memo(function FolderItem({
   onUnpinNote,
   onDuplicateNote,
   onDeleteNote,
+  onMoveNoteToParent,
+  onMoveFolderToParent,
 }: FolderItemProps) {
   const isCollapsed = collapsedFolders.has(folder.path);
   const noteCount = countNotesInFolder(folder);
   const isEmpty = noteCount === 0 && folder.children.length === 0;
+  const isFocused = focusedItemKey === `folder:${folder.path}`;
 
   const handleClick = useCallback(() => {
     onToggleCollapse(folder.path);
@@ -274,7 +308,11 @@ const FolderItemComponent = memo(function FolderItem({
           <div
             ref={setDropRef}
             className={`flex items-center gap-1.5 py-1.5 cursor-pointer rounded-md select-none transition-colors ${
-              isOver ? "bg-accent/10 ring-1 ring-accent" : "hover:bg-bg-muted"
+              isOver
+                ? "bg-accent/10 ring-1 ring-accent"
+                : isFocused
+                  ? "bg-bg-muted/50 ring-1 ring-text-muted/30"
+                  : "hover:bg-bg-muted"
             }`}
             style={{ paddingLeft: `${depth * 12 + 8}px`, paddingRight: "8px" }}
             onClick={handleClick}
@@ -301,6 +339,7 @@ const FolderItemComponent = memo(function FolderItem({
                   collapsedFolders={collapsedFolders}
                   onToggleCollapse={onToggleCollapse}
                   selectedNoteId={selectedNoteId}
+                  focusedItemKey={focusedItemKey}
                   pinnedIds={pinnedIds}
                   onSelectNote={onSelectNote}
                   onCreateNoteHere={onCreateNoteHere}
@@ -311,6 +350,8 @@ const FolderItemComponent = memo(function FolderItem({
                   onUnpinNote={onUnpinNote}
                   onDuplicateNote={onDuplicateNote}
                   onDeleteNote={onDeleteNote}
+                  onMoveNoteToParent={onMoveNoteToParent}
+                  onMoveFolderToParent={onMoveFolderToParent}
                 />
               ))}
               {folder.notes.map((note) => (
@@ -325,6 +366,8 @@ const FolderItemComponent = memo(function FolderItem({
                   onUnpin={onUnpinNote}
                   onDuplicate={onDuplicateNote}
                   onDelete={onDeleteNote}
+                  onMoveToParent={onMoveNoteToParent}
+                  focusedItemKey={focusedItemKey}
                 />
               ))}
               {isEmpty && (
@@ -366,6 +409,29 @@ const FolderItemComponent = memo(function FolderItem({
             <PencilIcon className="w-4 h-4 stroke-[1.6]" />
             Rename
           </ContextMenu.Item>
+          {folder.path.includes("/") && (
+            <>
+              <ContextMenu.Separator className={menuSeparatorClass} />
+              <ContextMenu.Item
+                className={menuItemClass}
+                onSelect={() => {
+                  const parentOfParent = folder.path.includes("/")
+                    ? folder.path.substring(0, folder.path.lastIndexOf("/"))
+                    : "";
+                  const grandparent = parentOfParent.includes("/")
+                    ? parentOfParent.substring(
+                        0,
+                        parentOfParent.lastIndexOf("/"),
+                      )
+                    : "";
+                  onMoveFolderToParent(folder.path, grandparent);
+                }}
+              >
+                <ArrowUpIcon className="w-4 h-4 stroke-[1.6]" />
+                Move to Parent Folder
+              </ContextMenu.Item>
+            </>
+          )}
           <ContextMenu.Separator className={menuSeparatorClass} />
           <ContextMenu.Item
             className={
@@ -404,6 +470,8 @@ export function FolderTreeView({
     unpinNote,
     duplicateNote,
     deleteNote,
+    moveNote,
+    moveFolder,
   } = useNotes();
 
   const [collapsedFolders, setCollapsedFolders] =
@@ -554,12 +622,87 @@ export function FolderTreeView({
     [subfolderParent, createFolder, expandFolder],
   );
 
+  // Flat list of visible items for keyboard navigation
+  const visibleItems = useMemo(
+    () => getVisibleItems(tree, pinnedIds, collapsedFolders),
+    [tree, pinnedIds, collapsedFolders],
+  );
+
+  // Track which item is focused for keyboard nav (separate from note selection)
+  const [focusedItemKey, setFocusedItemKey] = useState<string | null>(null);
+
+  // Sync focused item when note selection changes
+  useEffect(() => {
+    if (selectedNoteId) {
+      setFocusedItemKey(`note:${selectedNoteId}`);
+    }
+  }, [selectedNoteId]);
+
+  const itemKey = (item: TreeItem) =>
+    item.type === "note" ? `note:${item.id}` : `folder:${item.path}`;
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter" && e.key !== "Escape") {
+        return;
+      }
+
+      if (e.key === "Escape") {
+        // Blur and let App.tsx handle
+        containerRef.current?.blur();
+        return;
+      }
+
+      if (visibleItems.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const currentIndex = visibleItems.findIndex(
+        (item) => itemKey(item) === focusedItemKey,
+      );
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        let newIndex: number;
+        if (e.key === "ArrowDown") {
+          newIndex = currentIndex < visibleItems.length - 1 ? currentIndex + 1 : 0;
+        } else {
+          newIndex = currentIndex > 0 ? currentIndex - 1 : visibleItems.length - 1;
+        }
+        const item = visibleItems[newIndex];
+        setFocusedItemKey(itemKey(item));
+        if (item.type === "note") {
+          selectNote(item.id);
+        }
+      } else if (e.key === "Enter") {
+        if (currentIndex < 0) return;
+        const item = visibleItems[currentIndex];
+        if (item.type === "folder") {
+          handleToggleCollapse(item.path);
+        } else {
+          // Focus the editor
+          const editor = document.querySelector(".ProseMirror") as HTMLElement;
+          if (editor) editor.focus();
+        }
+      }
+    },
+    [visibleItems, focusedItemKey, selectNote, handleToggleCollapse],
+  );
+
   // Listen for focus requests
   useEffect(() => {
-    const handleFocus = () => containerRef.current?.focus();
+    const handleFocus = () => {
+      containerRef.current?.focus();
+      // If nothing focused yet, focus the selected note or first item
+      if (!focusedItemKey && visibleItems.length > 0) {
+        const selected = visibleItems.find(
+          (item) => item.type === "note" && item.id === selectedNoteId,
+        );
+        setFocusedItemKey(selected ? itemKey(selected) : itemKey(visibleItems[0]));
+      }
+    };
     window.addEventListener("focus-note-list", handleFocus);
     return () => window.removeEventListener("focus-note-list", handleFocus);
-  }, []);
+  }, [focusedItemKey, visibleItems, selectedNoteId]);
 
   // Separate pinned and unpinned root notes
   const pinnedRootNotes = useMemo(
@@ -577,62 +720,69 @@ export function FolderTreeView({
         ref={containerRef}
         tabIndex={0}
         data-note-list
+        data-folder-tree
         className="group/notelist flex flex-col gap-0.5 p-1.5 outline-none"
+        onKeyDown={handleKeyDown}
       >
-          {/* Pinned root notes */}
-          {pinnedRootNotes.map((note) => (
-            <FileItem
-              key={note.id}
-              note={note}
-              depth={0}
-              isSelected={selectedNoteId === note.id}
-              isPinned={true}
-              onSelect={selectNote}
-              onPin={pinNote}
-              onUnpin={unpinNote}
-              onDuplicate={duplicateNote}
-              onDelete={openDeleteNoteDialog}
-            />
-          ))}
+        {/* Pinned root notes */}
+        {pinnedRootNotes.map((note) => (
+          <FileItem
+            key={note.id}
+            note={note}
+            depth={0}
+            isSelected={selectedNoteId === note.id}
+            isPinned={true}
+            onSelect={selectNote}
+            onPin={pinNote}
+            onUnpin={unpinNote}
+            onDuplicate={duplicateNote}
+            onDelete={openDeleteNoteDialog}
+            focusedItemKey={focusedItemKey}
+          />
+        ))}
 
-          {/* Folders */}
-          {tree.folders.map((folder) => (
-            <FolderItemComponent
-              key={folder.path}
-              folder={folder}
-              depth={0}
-              collapsedFolders={collapsedFolders}
-              onToggleCollapse={handleToggleCollapse}
-              selectedNoteId={selectedNoteId}
-              pinnedIds={pinnedIds}
-              onSelectNote={selectNote}
-              onCreateNoteHere={createNoteInFolder}
-              onNewSubfolder={handleNewSubfolder}
-              onRenameFolder={handleRenameFolder}
-              onDeleteFolder={handleDeleteFolder}
-              onPinNote={pinNote}
-              onUnpinNote={unpinNote}
-              onDuplicateNote={duplicateNote}
-              onDeleteNote={openDeleteNoteDialog}
-            />
-          ))}
+        {/* Folders */}
+        {tree.folders.map((folder) => (
+          <FolderItemComponent
+            key={folder.path}
+            folder={folder}
+            depth={0}
+            collapsedFolders={collapsedFolders}
+            onToggleCollapse={handleToggleCollapse}
+            selectedNoteId={selectedNoteId}
+            focusedItemKey={focusedItemKey}
+            pinnedIds={pinnedIds}
+            onSelectNote={selectNote}
+            onCreateNoteHere={createNoteInFolder}
+            onNewSubfolder={handleNewSubfolder}
+            onRenameFolder={handleRenameFolder}
+            onDeleteFolder={handleDeleteFolder}
+            onPinNote={pinNote}
+            onUnpinNote={unpinNote}
+            onDuplicateNote={duplicateNote}
+            onDeleteNote={openDeleteNoteDialog}
+            onMoveNoteToParent={moveNote}
+            onMoveFolderToParent={moveFolder}
+          />
+        ))}
 
-          {/* Unpinned root notes */}
-          {unpinnedRootNotes.map((note) => (
-            <FileItem
-              key={note.id}
-              note={note}
-              depth={0}
-              isSelected={selectedNoteId === note.id}
-              isPinned={false}
-              onSelect={selectNote}
-              onPin={pinNote}
-              onUnpin={unpinNote}
-              onDuplicate={duplicateNote}
-              onDelete={openDeleteNoteDialog}
-            />
-          ))}
-        </div>
+        {/* Unpinned root notes */}
+        {unpinnedRootNotes.map((note) => (
+          <FileItem
+            key={note.id}
+            note={note}
+            depth={0}
+            isSelected={selectedNoteId === note.id}
+            isPinned={false}
+            onSelect={selectNote}
+            onPin={pinNote}
+            onUnpin={unpinNote}
+            onDuplicate={duplicateNote}
+            onDelete={openDeleteNoteDialog}
+            focusedItemKey={focusedItemKey}
+          />
+        ))}
+      </div>
 
       {/* Delete folder confirmation dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

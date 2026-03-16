@@ -79,6 +79,51 @@ export function buildFolderTree(
   return { rootNotes, folders: topLevelFolders };
 }
 
+export type TreeItem =
+  | { type: "note"; id: string }
+  | { type: "folder"; path: string };
+
+/** Build a flat list of visible tree items in DFS order (for keyboard navigation). */
+export function getVisibleItems(
+  tree: FolderTreeData,
+  pinnedIds: Set<string>,
+  collapsedFolders: Set<string>,
+): TreeItem[] {
+  const items: TreeItem[] = [];
+
+  // Pinned root notes first
+  for (const note of tree.rootNotes) {
+    if (pinnedIds.has(note.id)) {
+      items.push({ type: "note", id: note.id });
+    }
+  }
+
+  // Folders (recursive DFS)
+  function walkFolder(folder: FolderNode) {
+    items.push({ type: "folder", path: folder.path });
+    if (!collapsedFolders.has(folder.path)) {
+      for (const child of folder.children) {
+        walkFolder(child);
+      }
+      for (const note of folder.notes) {
+        items.push({ type: "note", id: note.id });
+      }
+    }
+  }
+  for (const folder of tree.folders) {
+    walkFolder(folder);
+  }
+
+  // Unpinned root notes
+  for (const note of tree.rootNotes) {
+    if (!pinnedIds.has(note.id)) {
+      items.push({ type: "note", id: note.id });
+    }
+  }
+
+  return items;
+}
+
 export function countNotesInFolder(folder: FolderNode): number {
   let count = folder.notes.length;
   for (const child of folder.children) {

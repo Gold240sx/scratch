@@ -156,8 +156,15 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
   );
 
   const toggleSearch = useCallback(() => {
-    setSearchOpen((prev) => !prev);
-  }, []);
+    setSearchOpen((prev) => {
+      if (prev) {
+        // Closing search — clear query
+        setInputValue("");
+        clearSearch();
+      }
+      return !prev;
+    });
+  }, [clearSearch]);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
@@ -215,9 +222,12 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
   }, [clearSearch]);
 
   const handleNewFolder = useCallback(() => {
-    setFolderDialogParent("");
+    const lastSlash = selectedNoteId?.lastIndexOf("/") ?? -1;
+    setFolderDialogParent(
+      lastSlash > 0 ? selectedNoteId!.substring(0, lastSlash) : "",
+    );
     setFolderDialogOpen(true);
-  }, []);
+  }, [selectedNoteId]);
 
   const handleFolderDialogConfirm = useCallback(
     async (name: string) => {
@@ -284,7 +294,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
               <DropdownMenu.Trigger asChild>
                 <IconButton
                   variant="ghost"
-                  title={`New Note (${mod}${isMac ? "" : "+"}N)`}
+                  title="New Note or Folder"
                 >
                   <PlusIcon className="w-5.25 h-5.25 stroke-[1.4]" />
                 </IconButton>

@@ -325,10 +325,13 @@ function AppContent() {
       }
 
       // Arrow keys for note navigation
+      // Skip if folder tree view is handling its own navigation
+      const isInFolderTree = !!(e.target as HTMLElement).closest("[data-folder-tree]");
       if (
         displayItems.length > 0 &&
         (e.key === "ArrowDown" || e.key === "ArrowUp") &&
-        ((!isInEditor && !isInInput) || isEditorEmpty)
+        ((!isInEditor && !isInInput) || isEditorEmpty) &&
+        !isInFolderTree
       ) {
         e.preventDefault();
         const currentIndex = displayItems.findIndex(
