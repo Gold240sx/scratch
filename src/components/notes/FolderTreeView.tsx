@@ -515,11 +515,12 @@ export function FolderTreeView({
     if (noteToDelete) {
       try {
         await deleteNote(noteToDelete);
+        setNoteToDelete(null);
+        setNoteDeleteDialogOpen(false);
       } catch (error) {
         console.error("Failed to delete note:", error);
+        toast.error("Failed to delete note");
       }
-      setNoteToDelete(null);
-      setNoteDeleteDialogOpen(false);
     }
   }, [noteToDelete, deleteNote]);
 

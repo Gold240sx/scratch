@@ -721,6 +721,9 @@ function FoldersToggle() {
   useEffect(() => {
     invoke<Settings>("get_settings").then((s) => {
       setFoldersEnabled(s.foldersEnabled === true);
+    }).catch((error) => {
+      console.error("Failed to load folder setting:", error);
+      setFoldersEnabled(false);
     });
   }, []);
 

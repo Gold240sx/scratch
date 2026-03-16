@@ -238,7 +238,7 @@ TipTap editor with extensions and features:
 - `AiEditModal` - AI prompt input for Claude/Codex/OpenCode/Ollama CLI integration
 - `AiResponseToast` - AI response display with markdown parsing and undo button
 
-### Tauri Commands
+### Command Reference
 
 **Note Management:** `list_notes`, `read_note`, `save_note`, `delete_note`, `create_note`, `move_note`
 
