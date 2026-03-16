@@ -28,7 +28,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
     search,
     searchQuery,
     clearSearch,
-    activeFolderPath,
+    selectedNoteId,
   } = useNotes();
   const [searchOpen, setSearchOpen] = useState(false);
   const [inputValue, setInputValue] = useState(searchQuery);
@@ -140,14 +140,16 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
   // Listen for create-new-folder event (from command palette / keyboard shortcut)
   useEffect(() => {
     const handleCreateFolder = () => {
-      setFolderDialogParent(activeFolderPath ?? "");
+      // Derive parent folder from currently selected note
+      const lastSlash = selectedNoteId?.lastIndexOf("/") ?? -1;
+      setFolderDialogParent(lastSlash > 0 ? selectedNoteId!.substring(0, lastSlash) : "");
       setFolderDialogOpen(true);
     };
 
     window.addEventListener("create-new-folder", handleCreateFolder);
     return () =>
       window.removeEventListener("create-new-folder", handleCreateFolder);
-  }, [activeFolderPath]);
+  }, [selectedNoteId]);
 
 
   return (
@@ -194,7 +196,8 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
                     onSelect={() => createNote()}
                   >
                     <AddNoteIcon className="w-4 h-4 stroke-[1.6]" />
-                    New Note
+                    <span className="flex-1">New Note</span>
+                    <kbd className="text-xs text-text-muted ml-2">{mod}{isMac ? "" : "+"}N</kbd>
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
                     className="px-3 py-1.5 text-sm text-text cursor-pointer outline-none hover:bg-bg-muted focus:bg-bg-muted flex items-center gap-2"

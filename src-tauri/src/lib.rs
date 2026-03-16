@@ -1434,6 +1434,201 @@ async fn rename_folder(
 }
 
 #[tauri::command]
+async fn move_note(
+    id: String,
+    target_folder: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
+            .notes_folder
+            .clone()
+            .ok_or("Notes folder not set")?
+    };
+    let folder_root = PathBuf::from(&folder);
+    let source_path = abs_path_from_id(&folder_root, &id)?;
+
+    if !source_path.exists() {
+        return Err("Note not found".to_string());
+    }
+
+    // Extract the filename (leaf) from the note ID
+    let leaf = id.rsplit('/').next().unwrap_or(&id);
+
+    // Build new ID
+    let new_id = if target_folder.is_empty() {
+        leaf.to_string()
+    } else {
+        validate_folder_path(&target_folder)?;
+        format!("{}/{}", target_folder, leaf)
+    };
+
+    if new_id == id {
+        return Ok(id);
+    }
+
+    let dest_path = abs_path_from_id(&folder_root, &new_id)?;
+
+    // Ensure target directory exists
+    if let Some(parent) = dest_path.parent() {
+        fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+    }
+
+    // Handle collision
+    if dest_path.exists() {
+        return Err("A note with that name already exists in the target folder".to_string());
+    }
+
+    tokio::fs::rename(&source_path, &dest_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Update pinned note IDs
+    {
+        let mut settings = state.settings.write().expect("settings write lock");
+        if let Some(ref mut pinned) = settings.pinned_note_ids {
+            for pin_id in pinned.iter_mut() {
+                if *pin_id == id {
+                    *pin_id = new_id.clone();
+                }
+            }
+        }
+        let _ = save_settings(&folder, &settings);
+    }
+
+    // Update cache
+    {
+        let mut cache = state.notes_cache.write().expect("cache write lock");
+        if let Some(mut meta) = cache.remove(&id) {
+            meta.id = new_id.clone();
+            cache.insert(new_id.clone(), meta);
+        }
+    }
+
+    // Rebuild search index
+    {
+        let index = state.search_index.lock().expect("search index mutex");
+        if let Some(ref search_index) = *index {
+            let _ = search_index.rebuild_index(&folder_root);
+        }
+    }
+
+    Ok(new_id)
+}
+
+#[tauri::command]
+async fn move_folder(
+    path: String,
+    target_parent: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
+            .notes_folder
+            .clone()
+            .ok_or("Notes folder not set")?
+    };
+
+    validate_folder_path(&path)?;
+    if !target_parent.is_empty() {
+        validate_folder_path(&target_parent)?;
+    }
+
+    let folder_root = PathBuf::from(&folder);
+    let source = folder_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
+
+    if !source.is_dir() {
+        return Err("Source is not a directory".to_string());
+    }
+
+    // Get folder name
+    let name = source
+        .file_name()
+        .ok_or("Cannot determine folder name")?
+        .to_string_lossy()
+        .to_string();
+
+    let dest = if target_parent.is_empty() {
+        folder_root.join(&name)
+    } else {
+        folder_root
+            .join(target_parent.replace('/', std::path::MAIN_SEPARATOR_STR))
+            .join(&name)
+    };
+
+    // Prevent moving into itself
+    if dest.starts_with(&source) {
+        return Err("Cannot move a folder into itself".to_string());
+    }
+
+    if dest.exists() {
+        return Err("A folder with that name already exists in the target".to_string());
+    }
+
+    // Ensure target parent exists
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+    }
+
+    // Compute old and new path prefixes for updating IDs
+    let old_prefix = format!("{}/", path);
+    let new_path = if target_parent.is_empty() {
+        name.clone()
+    } else {
+        format!("{}/{}", target_parent, name)
+    };
+    let new_prefix = format!("{}/", new_path);
+
+    tokio::fs::rename(&source, &dest)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Update pinned note IDs
+    {
+        let mut settings = state.settings.write().expect("settings write lock");
+        if let Some(ref mut pinned) = settings.pinned_note_ids {
+            for pin_id in pinned.iter_mut() {
+                if pin_id.starts_with(&old_prefix) {
+                    *pin_id = format!("{}{}", new_prefix, &pin_id[old_prefix.len()..]);
+                }
+            }
+        }
+        let _ = save_settings(&folder, &settings);
+    }
+
+    // Update cache
+    {
+        let mut cache = state.notes_cache.write().expect("cache write lock");
+        let updates: Vec<(String, String)> = cache
+            .keys()
+            .filter(|id| id.starts_with(&old_prefix))
+            .map(|id| {
+                let new_id = format!("{}{}", new_prefix, &id[old_prefix.len()..]);
+                (id.clone(), new_id)
+            })
+            .collect();
+        for (old_id, new_id) in updates {
+            if let Some(mut meta) = cache.remove(&old_id) {
+                meta.id = new_id.clone();
+                cache.insert(new_id, meta);
+            }
+        }
+    }
+
+    // Rebuild search index
+    {
+        let index = state.search_index.lock().expect("search index mutex");
+        if let Some(ref search_index) = *index {
+            let _ = search_index.rebuild_index(&folder_root);
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 fn get_settings(state: State<AppState>) -> Settings {
     state.settings.read().expect("settings read lock").clone()
 }
@@ -3292,6 +3487,8 @@ pub fn run() {
             create_folder,
             delete_folder,
             rename_folder,
+            move_note,
+            move_folder,
             get_settings,
             update_settings,
             update_git_enabled,

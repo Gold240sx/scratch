@@ -45,6 +45,14 @@ export async function renameFolder(oldPath: string, newName: string): Promise<vo
   return invoke("rename_folder", { oldPath, newName });
 }
 
+export async function moveNote(id: string, targetFolder: string): Promise<string> {
+  return invoke("move_note", { id, targetFolder });
+}
+
+export async function moveFolder(path: string, targetParent: string): Promise<void> {
+  return invoke("move_folder", { path, targetParent });
+}
+
 export async function duplicateNote(id: string): Promise<Note> {
   // Read the original note, then create a new one with the same content
   const original = await readNote(id);

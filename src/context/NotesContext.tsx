@@ -27,7 +27,6 @@ interface NotesDataContextValue {
   isSearching: boolean;
   hasExternalChanges: boolean;
   reloadVersion: number;
-  activeFolderPath: string | null;
 }
 
 // Actions context: stable references, rarely causes re-renders
@@ -49,7 +48,8 @@ interface NotesActionsContextValue {
   createFolder: (parentPath: string, name: string) => Promise<void>;
   deleteFolder: (path: string) => Promise<void>;
   renameFolder: (oldPath: string, newName: string) => Promise<void>;
-  setActiveFolderPath: (path: string | null) => void;
+  moveNote: (id: string, targetFolder: string) => Promise<void>;
+  moveFolder: (path: string, targetParent: string) => Promise<void>;
 }
 
 const NotesDataContext = createContext<NotesDataContextValue | null>(null);
@@ -66,7 +66,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasExternalChanges, setHasExternalChanges] = useState(false);
-  const [activeFolderPath, setActiveFolderPath] = useState<string | null>(null);
   // Increments when user manually refreshes, so Editor knows to reload content
   const [reloadVersion, setReloadVersion] = useState(0);
 
@@ -117,9 +116,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       // Set selected ID immediately for responsive UI
       setSelectedNoteId(id);
       setHasExternalChanges(false);
-      // Update active folder from note's parent path
-      const lastSlash = id.lastIndexOf("/");
-      setActiveFolderPath(lastSlash > 0 ? id.substring(0, lastSlash) : null);
       const note = await notesService.readNote(id);
       if (requestId !== selectRequestIdRef.current) return;
       setCurrentNote(note);
@@ -143,7 +139,15 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   const createNote = useCallback(async () => {
     try {
-      const note = await notesService.createNote(activeFolderPath ?? undefined);
+      // Derive target folder from the selected note's parent path
+      let targetFolder: string | undefined;
+      if (selectedNoteIdRef.current) {
+        const lastSlash = selectedNoteIdRef.current.lastIndexOf("/");
+        if (lastSlash > 0) {
+          targetFolder = selectedNoteIdRef.current.substring(0, lastSlash);
+        }
+      }
+      const note = await notesService.createNote(targetFolder);
       selectRequestIdRef.current += 1;
       pendingNewNoteIdRef.current = note.id;
       // Mark as recently saved to ignore file-change events from our own creation
@@ -160,7 +164,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create note");
     }
-  }, [refreshNotes, activeFolderPath]);
+  }, [refreshNotes]);
 
   const consumePendingNewNote = useCallback((id: string) => {
     if (pendingNewNoteIdRef.current !== id) {
@@ -417,20 +421,45 @@ export function NotesProvider({ children }: { children: ReactNode }) {
           return prevId;
         });
 
-        // Update activeFolderPath if it was the renamed folder or inside it
-        setActiveFolderPath((prev) => {
-          if (prev === oldPath) return newPath;
-          if (prev && prev.startsWith(oldPrefix)) {
-            return newPrefix + prev.substring(oldPrefix.length);
-          }
-          return prev;
-        });
-
         await refreshNotes();
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to rename folder"
         );
+      }
+    },
+    [refreshNotes]
+  );
+
+  const moveNoteAction = useCallback(
+    async (id: string, targetFolder: string) => {
+      try {
+        const newId = await notesService.moveNote(id, targetFolder);
+        // Update selection if we moved the selected note
+        setSelectedNoteId((prevId) => {
+          if (prevId === id) {
+            notesService.readNote(newId).then((note) => {
+              setCurrentNote(note);
+            });
+            return newId;
+          }
+          return prevId;
+        });
+        await refreshNotes();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to move note");
+      }
+    },
+    [refreshNotes]
+  );
+
+  const moveFolderAction = useCallback(
+    async (path: string, targetParent: string) => {
+      try {
+        await notesService.moveFolder(path, targetParent);
+        await refreshNotes();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to move folder");
       }
     },
     [refreshNotes]
@@ -610,7 +639,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       isSearching,
       hasExternalChanges,
       reloadVersion,
-      activeFolderPath,
     }),
     [
       notes,
@@ -624,7 +652,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       isSearching,
       hasExternalChanges,
       reloadVersion,
-      activeFolderPath,
     ]
   );
 
@@ -648,7 +675,8 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       createFolder: createFolderAction,
       deleteFolder: deleteFolderAction,
       renameFolder: renameFolderAction,
-      setActiveFolderPath,
+      moveNote: moveNoteAction,
+      moveFolder: moveFolderAction,
     }),
     [
       selectNote,
@@ -668,6 +696,8 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       createFolderAction,
       deleteFolderAction,
       renameFolderAction,
+      moveNoteAction,
+      moveFolderAction,
     ]
   );
 

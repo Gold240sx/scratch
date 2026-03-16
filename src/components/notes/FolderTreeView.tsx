@@ -1,5 +1,16 @@
 import { useCallback, useMemo, useState, useEffect, useRef, memo } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  useDraggable,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { useNotes } from "../../context/NotesContext";
 import { buildFolderTree, countNotesInFolder } from "../../lib/folderTree";
 import { FolderNameDialog } from "./FolderNameDialog";
@@ -16,7 +27,6 @@ import {
 } from "../ui";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  FolderIcon,
   ChevronRightIcon,
   ChevronDownIcon,
   AddNoteIcon,
@@ -78,12 +88,22 @@ const FileItem = memo(function FileItem({
   onDuplicate,
   onDelete,
 }: FileItemProps) {
-  const ref = useRef<HTMLDivElement>(null);
+  const itemRef = useRef<HTMLDivElement>(null);
   const handleClick = useCallback(() => onSelect(note.id), [onSelect, note.id]);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
+    id: `note:${note.id}`,
+    data: { type: "note", id: note.id },
+  });
 
   useEffect(() => {
     if (isSelected) {
-      ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      itemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }, [isSelected]);
 
@@ -110,11 +130,19 @@ const FileItem = memo(function FileItem({
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
         <div
-          ref={ref}
-          className={`flex items-center gap-1.5 py-1 cursor-pointer rounded-md select-none ${
-            isSelected
-              ? "bg-bg-muted group-focus/notelist:ring-1 group-focus/notelist:ring-text-muted"
-              : "hover:bg-bg-muted"
+          ref={(el) => {
+            setDragRef(el);
+            (itemRef as React.MutableRefObject<HTMLDivElement | null>).current =
+              el;
+          }}
+          {...attributes}
+          {...listeners}
+          className={`flex items-center gap-1.5 py-1.5 cursor-pointer rounded-md select-none ${
+            isDragging
+              ? "opacity-40"
+              : isSelected
+                ? "bg-bg-muted group-focus/notelist:ring-1 group-focus/notelist:ring-text-muted"
+                : "hover:bg-bg-muted"
           }`}
           style={{ paddingLeft: `${depth * 12 + 8}px`, paddingRight: "8px" }}
           onClick={handleClick}
@@ -122,9 +150,9 @@ const FileItem = memo(function FileItem({
           tabIndex={-1}
         >
           {isPinned ? (
-            <PinIcon className="w-3.5 h-3.5 stroke-[1.6] fill-current text-text-muted shrink-0" />
+            <PinIcon className="w-4 h-4 stroke-[1.6] fill-current text-text-muted shrink-0" />
           ) : (
-            <NoteIcon className="w-3.5 h-3.5 text-text-muted shrink-0" />
+            <NoteIcon className="w-4 h-4 stroke-[1.6] opacity-50 shrink-0" />
           )}
           <span className="text-sm text-text truncate">
             {cleanTitle(note.title)}
@@ -153,7 +181,10 @@ const FileItem = memo(function FileItem({
           </ContextMenu.Item>
           <ContextMenu.Separator className={menuSeparatorClass} />
           <ContextMenu.Item
-            className={menuItemClass + " text-red-500 hover:text-red-500 focus:text-red-500"}
+            className={
+              menuItemClass +
+              " text-red-500 hover:text-red-500 focus:text-red-500"
+            }
             onSelect={() => onDelete(note.id)}
           >
             <TrashIcon className="w-4 h-4 stroke-[1.6]" />
@@ -171,10 +202,8 @@ interface FolderItemProps {
   collapsedFolders: Set<string>;
   onToggleCollapse: (path: string) => void;
   selectedNoteId: string | null;
-  activeFolderPath: string | null;
   pinnedIds: Set<string>;
   onSelectNote: (id: string) => void;
-  onSelectFolder: (path: string) => void;
   onCreateNoteHere: (path: string) => void;
   onNewSubfolder: (parentPath: string) => void;
   onRenameFolder: (path: string, currentName: string) => void;
@@ -191,10 +220,8 @@ const FolderItemComponent = memo(function FolderItem({
   collapsedFolders,
   onToggleCollapse,
   selectedNoteId,
-  activeFolderPath,
   pinnedIds,
   onSelectNote,
-  onSelectFolder,
   onCreateNoteHere,
   onNewSubfolder,
   onRenameFolder,
@@ -207,44 +234,57 @@ const FolderItemComponent = memo(function FolderItem({
   const isCollapsed = collapsedFolders.has(folder.path);
   const noteCount = countNotesInFolder(folder);
   const isEmpty = noteCount === 0 && folder.children.length === 0;
-  const isSelected = activeFolderPath === folder.path;
 
   const handleClick = useCallback(() => {
-    onSelectFolder(folder.path);
     onToggleCollapse(folder.path);
-  }, [onSelectFolder, onToggleCollapse, folder.path]);
+  }, [onToggleCollapse, folder.path]);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
+    id: `folder:${folder.path}`,
+    data: { type: "folder", path: folder.path },
+  });
+
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `drop-folder:${folder.path}`,
+    data: { type: "folder", path: folder.path },
+  });
 
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
-        <div>
+        <div
+          ref={setDragRef}
+          {...attributes}
+          {...listeners}
+          className={isDragging ? "opacity-40" : ""}
+        >
           <div
-            className={`flex items-center gap-1 px-2 py-1.5 cursor-pointer rounded-md select-none ${
-              isSelected
-                ? "bg-bg-muted"
-                : "hover:bg-bg-muted"
+            ref={setDropRef}
+            className={`flex items-center gap-1.5 py-1.5 cursor-pointer rounded-md select-none transition-colors ${
+              isOver ? "bg-accent/10 ring-1 ring-accent" : "hover:bg-bg-muted"
             }`}
-            style={{ paddingLeft: `${depth * 12 + 8}px` }}
+            style={{ paddingLeft: `${depth * 12 + 8}px`, paddingRight: "8px" }}
             onClick={handleClick}
             role="button"
             tabIndex={-1}
           >
             {isCollapsed ? (
-              <ChevronRightIcon className="w-3.5 h-3.5 text-text-muted shrink-0" />
+              <ChevronRightIcon className="w-4 h-4 stroke-[1.6] text-text-muted/60 shrink-0" />
             ) : (
-              <ChevronDownIcon className="w-3.5 h-3.5 text-text-muted shrink-0" />
+              <ChevronDownIcon className="w-4 h-4 stroke-[1.6] text-text-muted/60 shrink-0" />
             )}
-            <FolderIcon className="w-4 h-4 text-text-muted shrink-0" />
-            <span className="text-sm font-medium text-text truncate">
+            <span className="text-sm text-text-muted truncate">
               {folder.name}
-            </span>
-            <span className="text-2xs text-text-muted ml-auto opacity-60 tabular-nums shrink-0">
-              {noteCount > 0 ? noteCount : ""}
             </span>
           </div>
 
           {!isCollapsed && (
-            <div>
+            <div className="flex flex-col gap-0.5">
               {folder.children.map((child) => (
                 <FolderItemComponent
                   key={child.path}
@@ -253,10 +293,8 @@ const FolderItemComponent = memo(function FolderItem({
                   collapsedFolders={collapsedFolders}
                   onToggleCollapse={onToggleCollapse}
                   selectedNoteId={selectedNoteId}
-                  activeFolderPath={activeFolderPath}
                   pinnedIds={pinnedIds}
                   onSelectNote={onSelectNote}
-                  onSelectFolder={onSelectFolder}
                   onCreateNoteHere={onCreateNoteHere}
                   onNewSubfolder={onNewSubfolder}
                   onRenameFolder={onRenameFolder}
@@ -283,10 +321,10 @@ const FolderItemComponent = memo(function FolderItem({
               ))}
               {isEmpty && (
                 <div
-                  className="text-xs text-text-muted/50 py-1 select-none italic"
+                  className="text-sm text-text-muted/50 py-1 select-none"
                   style={{ paddingLeft: `${(depth + 1) * 12 + 24}px` }}
                 >
-                  Empty
+                  No notes here
                 </div>
               )}
             </div>
@@ -300,7 +338,7 @@ const FolderItemComponent = memo(function FolderItem({
             onSelect={() => onCreateNoteHere(folder.path)}
           >
             <AddNoteIcon className="w-4 h-4 stroke-[1.6]" />
-            New Note Here
+            New Note
           </ContextMenu.Item>
           <ContextMenu.Item
             className={menuItemClass}
@@ -322,7 +360,10 @@ const FolderItemComponent = memo(function FolderItem({
           </ContextMenu.Item>
           <ContextMenu.Separator className={menuSeparatorClass} />
           <ContextMenu.Item
-            className={menuItemClass + " text-red-500 hover:text-red-500 focus:text-red-500"}
+            className={
+              menuItemClass +
+              " text-red-500 hover:text-red-500 focus:text-red-500"
+            }
             onSelect={() => onDeleteFolder(folder.path)}
           >
             <TrashIcon className="w-4 h-4 stroke-[1.6]" />
@@ -347,8 +388,6 @@ export function FolderTreeView({
     notes,
     selectedNoteId,
     selectNote,
-    activeFolderPath,
-    setActiveFolderPath,
     createNoteInFolder,
     createFolder,
     deleteFolder,
@@ -357,11 +396,12 @@ export function FolderTreeView({
     unpinNote,
     duplicateNote,
     deleteNote,
+    moveNote,
+    moveFolder,
   } = useNotes();
 
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
-    loadCollapsedFolders
-  );
+  const [collapsedFolders, setCollapsedFolders] =
+    useState<Set<string>>(loadCollapsedFolders);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -372,7 +412,13 @@ export function FolderTreeView({
   const [noteDeleteDialogOpen, setNoteDeleteDialogOpen] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
   const [knownFolders, setKnownFolders] = useState<string[]>([]);
+  const [dragLabel, setDragLabel] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // dnd-kit sensor — require 5px movement before starting drag to avoid interfering with clicks
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
 
   // Load known folders from disk (includes empty folders)
   useEffect(() => {
@@ -389,7 +435,7 @@ export function FolderTreeView({
 
   const tree = useMemo(
     () => buildFolderTree(notes, pinnedIds, knownFolders),
-    [notes, pinnedIds, knownFolders]
+    [notes, pinnedIds, knownFolders],
   );
 
   const handleToggleCollapse = useCallback((path: string) => {
@@ -415,7 +461,7 @@ export function FolderTreeView({
       setRenameDefaultValue(currentName);
       setRenameDialogOpen(true);
     },
-    []
+    [],
   );
 
   const handleDeleteFolder = useCallback((path: string) => {
@@ -456,7 +502,7 @@ export function FolderTreeView({
         setRenameDialogOpen(false);
       }
     },
-    [folderToRename, renameFolder]
+    [folderToRename, renameFolder],
   );
 
   const handleSubfolderConfirm = useCallback(
@@ -464,8 +510,72 @@ export function FolderTreeView({
       await createFolder(subfolderParent, name);
       setSubfolderDialogOpen(false);
     },
-    [subfolderParent, createFolder]
+    [subfolderParent, createFolder],
   );
+
+  // dnd-kit handlers
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const data = event.active.data.current;
+    if (data?.type === "note") {
+      const noteId = data.id as string;
+      const leaf = noteId.includes("/")
+        ? noteId.substring(noteId.lastIndexOf("/") + 1)
+        : noteId;
+      setDragLabel(leaf);
+    } else if (data?.type === "folder") {
+      const path = data.path as string;
+      const name = path.includes("/")
+        ? path.substring(path.lastIndexOf("/") + 1)
+        : path;
+      setDragLabel(name);
+    }
+  }, []);
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      setDragLabel(null);
+      const { active, over } = event;
+      if (!over) return;
+
+      const activeData = active.data.current;
+      const overData = over.data.current;
+      if (!activeData || !overData) return;
+
+      const targetFolder =
+        overData.type === "root" ? "" : (overData.path as string);
+
+      if (activeData.type === "note") {
+        const noteId = activeData.id as string;
+        // Don't move to the same folder
+        const noteParent = noteId.includes("/")
+          ? noteId.substring(0, noteId.lastIndexOf("/"))
+          : "";
+        if (noteParent === targetFolder) return;
+        await moveNote(noteId, targetFolder);
+      } else if (activeData.type === "folder") {
+        const folderPath = activeData.path as string;
+        // Don't move into itself or a descendant
+        if (
+          targetFolder === folderPath ||
+          targetFolder.startsWith(folderPath + "/")
+        )
+          return;
+        // Don't move if already in the target parent
+        const folderParent = folderPath.includes("/")
+          ? folderPath.substring(0, folderPath.lastIndexOf("/"))
+          : "";
+        if (folderParent === targetFolder) return;
+        await moveFolder(folderPath, targetFolder);
+      }
+    },
+    [moveNote, moveFolder],
+  );
+
+  // Root drop zone
+  const { setNodeRef: setRootDropRef, isOver: isRootOver } = useDroppable({
+    id: "drop-root",
+    data: { type: "root" },
+  });
 
   // Listen for focus requests
   useEffect(() => {
@@ -477,77 +587,98 @@ export function FolderTreeView({
   // Separate pinned and unpinned root notes
   const pinnedRootNotes = useMemo(
     () => tree.rootNotes.filter((n) => pinnedIds.has(n.id)),
-    [tree.rootNotes, pinnedIds]
+    [tree.rootNotes, pinnedIds],
   );
   const unpinnedRootNotes = useMemo(
     () => tree.rootNotes.filter((n) => !pinnedIds.has(n.id)),
-    [tree.rootNotes, pinnedIds]
+    [tree.rootNotes, pinnedIds],
   );
 
   return (
     <>
-      <div
-        ref={containerRef}
-        tabIndex={0}
-        data-note-list
-        className="group/notelist flex flex-col gap-0.5 p-1.5 outline-none"
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
       >
-        {/* Pinned root notes */}
-        {pinnedRootNotes.map((note) => (
-          <FileItem
-            key={note.id}
-            note={note}
-            depth={0}
-            isSelected={selectedNoteId === note.id}
-            isPinned={true}
-            onSelect={selectNote}
-            onPin={pinNote}
-            onUnpin={unpinNote}
-            onDuplicate={duplicateNote}
-            onDelete={openDeleteNoteDialog}
-          />
-        ))}
+        <div
+          ref={(el) => {
+            (
+              containerRef as React.MutableRefObject<HTMLDivElement | null>
+            ).current = el;
+            setRootDropRef(el);
+          }}
+          tabIndex={0}
+          data-note-list
+          className={`group/notelist flex flex-col gap-0.5 p-1.5 outline-none transition-colors ${
+            isRootOver ? "bg-accent/5" : ""
+          }`}
+        >
+          {/* Pinned root notes */}
+          {pinnedRootNotes.map((note) => (
+            <FileItem
+              key={note.id}
+              note={note}
+              depth={0}
+              isSelected={selectedNoteId === note.id}
+              isPinned={true}
+              onSelect={selectNote}
+              onPin={pinNote}
+              onUnpin={unpinNote}
+              onDuplicate={duplicateNote}
+              onDelete={openDeleteNoteDialog}
+            />
+          ))}
 
-        {/* Folders */}
-        {tree.folders.map((folder) => (
-          <FolderItemComponent
-            key={folder.path}
-            folder={folder}
-            depth={0}
-            collapsedFolders={collapsedFolders}
-            onToggleCollapse={handleToggleCollapse}
-            selectedNoteId={selectedNoteId}
-            activeFolderPath={activeFolderPath}
-            pinnedIds={pinnedIds}
-            onSelectNote={selectNote}
-            onSelectFolder={setActiveFolderPath}
-            onCreateNoteHere={createNoteInFolder}
-            onNewSubfolder={handleNewSubfolder}
-            onRenameFolder={handleRenameFolder}
-            onDeleteFolder={handleDeleteFolder}
-            onPinNote={pinNote}
-            onUnpinNote={unpinNote}
-            onDuplicateNote={duplicateNote}
-            onDeleteNote={openDeleteNoteDialog}
-          />
-        ))}
+          {/* Folders */}
+          {tree.folders.map((folder) => (
+            <FolderItemComponent
+              key={folder.path}
+              folder={folder}
+              depth={0}
+              collapsedFolders={collapsedFolders}
+              onToggleCollapse={handleToggleCollapse}
+              selectedNoteId={selectedNoteId}
+              pinnedIds={pinnedIds}
+              onSelectNote={selectNote}
+              onCreateNoteHere={createNoteInFolder}
+              onNewSubfolder={handleNewSubfolder}
+              onRenameFolder={handleRenameFolder}
+              onDeleteFolder={handleDeleteFolder}
+              onPinNote={pinNote}
+              onUnpinNote={unpinNote}
+              onDuplicateNote={duplicateNote}
+              onDeleteNote={openDeleteNoteDialog}
+            />
+          ))}
 
-        {/* Unpinned root notes */}
-        {unpinnedRootNotes.map((note) => (
-          <FileItem
-            key={note.id}
-            note={note}
-            depth={0}
-            isSelected={selectedNoteId === note.id}
-            isPinned={false}
-            onSelect={selectNote}
-            onPin={pinNote}
-            onUnpin={unpinNote}
-            onDuplicate={duplicateNote}
-            onDelete={openDeleteNoteDialog}
-          />
-        ))}
-      </div>
+          {/* Unpinned root notes */}
+          {unpinnedRootNotes.map((note) => (
+            <FileItem
+              key={note.id}
+              note={note}
+              depth={0}
+              isSelected={selectedNoteId === note.id}
+              isPinned={false}
+              onSelect={selectNote}
+              onPin={pinNote}
+              onUnpin={unpinNote}
+              onDuplicate={duplicateNote}
+              onDelete={openDeleteNoteDialog}
+            />
+          ))}
+        </div>
+
+        {/* Drag overlay — floating label while dragging */}
+        <DragOverlay>
+          {dragLabel && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-bg border border-border rounded-md shadow-lg text-sm text-text">
+              <NoteIcon className="w-3.5 h-3.5 stroke-[1.6] opacity-50 shrink-0" />
+              {dragLabel}
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
 
       {/* Delete folder confirmation dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

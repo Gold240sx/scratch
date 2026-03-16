@@ -282,17 +282,6 @@ function AppContent() {
         return;
       }
 
-      // Cmd+Shift+N - New folder (must check before Cmd+N)
-      if (
-        (e.metaKey || e.ctrlKey) &&
-        e.shiftKey &&
-        e.key.toLowerCase() === "n"
-      ) {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent("create-new-folder"));
-        return;
-      }
-
       // Cmd+N - New note
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
         e.preventDefault();

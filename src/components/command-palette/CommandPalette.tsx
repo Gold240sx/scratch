@@ -156,7 +156,7 @@ export function CommandPalette({
       {
         id: "new-folder",
         label: "New Folder",
-        shortcut: `${mod} ${shift} N`,
+        shortcut: undefined,
         icon: <FolderPlusIcon className="w-4.5 h-4.5 stroke-[1.5]" />,
         action: () => {
           onClose();
