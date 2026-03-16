@@ -713,7 +713,7 @@ const AI_PROVIDER_INFO: Record<
 };
 
 function FolderViewToggle() {
-  const [foldersEnabled, setFoldersEnabled] = useState(true);
+  const [foldersEnabled, setFoldersEnabled] = useState<boolean | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
@@ -737,6 +737,15 @@ function FolderViewToggle() {
       setIsUpdating(false);
     }
   };
+
+  if (foldersEnabled === null) {
+    return (
+      <div className="flex gap-1 p-1 rounded-[10px] border border-border">
+        <Button variant="ghost" size="xs" disabled>Off</Button>
+        <Button variant="ghost" size="xs" disabled>On</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex gap-1 p-1 rounded-[10px] border border-border">

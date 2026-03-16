@@ -14,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui";
+import { invoke } from "@tauri-apps/api/core";
 import {
   FolderIcon,
   ChevronRightIcon,
@@ -24,6 +25,7 @@ import {
   TrashIcon,
   NoteIcon,
   PinIcon,
+  CopyIcon,
 } from "../icons";
 import * as notesService from "../../services/notes";
 import type { FolderNode, NoteMetadata, Settings } from "../../types/note";
@@ -59,6 +61,10 @@ interface FileItemProps {
   isSelected: boolean;
   isPinned: boolean;
   onSelect: (id: string) => void;
+  onPin: (id: string) => Promise<void>;
+  onUnpin: (id: string) => Promise<void>;
+  onDuplicate: (id: string) => Promise<void>;
+  onDelete: (id: string) => void;
 }
 
 const FileItem = memo(function FileItem({
@@ -67,6 +73,10 @@ const FileItem = memo(function FileItem({
   isSelected,
   isPinned,
   onSelect,
+  onPin,
+  onUnpin,
+  onDuplicate,
+  onDelete,
 }: FileItemProps) {
   const ref = useRef<HTMLDivElement>(null);
   const handleClick = useCallback(() => onSelect(note.id), [onSelect, note.id]);
@@ -77,28 +87,81 @@ const FileItem = memo(function FileItem({
     }
   }, [isSelected]);
 
+  const handlePin = useCallback(async () => {
+    try {
+      await (isPinned ? onUnpin(note.id) : onPin(note.id));
+    } catch (error) {
+      console.error("Failed to pin/unpin note:", error);
+    }
+  }, [note.id, isPinned, onPin, onUnpin]);
+
+  const handleCopyFilepath = useCallback(async () => {
+    try {
+      const folder = await notesService.getNotesFolder();
+      if (folder) {
+        await invoke("copy_to_clipboard", { text: `${folder}/${note.id}.md` });
+      }
+    } catch (error) {
+      console.error("Failed to copy filepath:", error);
+    }
+  }, [note.id]);
+
   return (
-    <div
-      ref={ref}
-      className={`flex items-center gap-1.5 py-1 cursor-pointer rounded-md select-none ${
-        isSelected
-          ? "bg-bg-muted group-focus/notelist:ring-1 group-focus/notelist:ring-text-muted"
-          : "hover:bg-bg-muted"
-      }`}
-      style={{ paddingLeft: `${depth * 12 + 8}px`, paddingRight: "8px" }}
-      onClick={handleClick}
-      role="button"
-      tabIndex={-1}
-    >
-      {isPinned ? (
-        <PinIcon className="w-3.5 h-3.5 stroke-[1.6] fill-current text-text-muted shrink-0" />
-      ) : (
-        <NoteIcon className="w-3.5 h-3.5 text-text-muted shrink-0" />
-      )}
-      <span className="text-sm text-text truncate">
-        {cleanTitle(note.title)}
-      </span>
-    </div>
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <div
+          ref={ref}
+          className={`flex items-center gap-1.5 py-1 cursor-pointer rounded-md select-none ${
+            isSelected
+              ? "bg-bg-muted group-focus/notelist:ring-1 group-focus/notelist:ring-text-muted"
+              : "hover:bg-bg-muted"
+          }`}
+          style={{ paddingLeft: `${depth * 12 + 8}px`, paddingRight: "8px" }}
+          onClick={handleClick}
+          role="button"
+          tabIndex={-1}
+        >
+          {isPinned ? (
+            <PinIcon className="w-3.5 h-3.5 stroke-[1.6] fill-current text-text-muted shrink-0" />
+          ) : (
+            <NoteIcon className="w-3.5 h-3.5 text-text-muted shrink-0" />
+          )}
+          <span className="text-sm text-text truncate">
+            {cleanTitle(note.title)}
+          </span>
+        </div>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className="min-w-44 bg-bg border border-border rounded-md shadow-lg py-1 z-50">
+          <ContextMenu.Item className={menuItemClass} onSelect={handlePin}>
+            <PinIcon className="w-4 h-4 stroke-[1.6]" />
+            {isPinned ? "Unpin" : "Pin"}
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className={menuItemClass}
+            onSelect={() => onDuplicate(note.id)}
+          >
+            <CopyIcon className="w-4 h-4 stroke-[1.6]" />
+            Duplicate
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className={menuItemClass}
+            onSelect={handleCopyFilepath}
+          >
+            <CopyIcon className="w-4 h-4 stroke-[1.6]" />
+            Copy Filepath
+          </ContextMenu.Item>
+          <ContextMenu.Separator className={menuSeparatorClass} />
+          <ContextMenu.Item
+            className={menuItemClass + " text-red-500 hover:text-red-500 focus:text-red-500"}
+            onSelect={() => onDelete(note.id)}
+          >
+            <TrashIcon className="w-4 h-4 stroke-[1.6]" />
+            Delete
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 });
 
@@ -116,6 +179,10 @@ interface FolderItemProps {
   onNewSubfolder: (parentPath: string) => void;
   onRenameFolder: (path: string, currentName: string) => void;
   onDeleteFolder: (path: string) => void;
+  onPinNote: (id: string) => Promise<void>;
+  onUnpinNote: (id: string) => Promise<void>;
+  onDuplicateNote: (id: string) => Promise<void>;
+  onDeleteNote: (id: string) => void;
 }
 
 const FolderItemComponent = memo(function FolderItem({
@@ -132,6 +199,10 @@ const FolderItemComponent = memo(function FolderItem({
   onNewSubfolder,
   onRenameFolder,
   onDeleteFolder,
+  onPinNote,
+  onUnpinNote,
+  onDuplicateNote,
+  onDeleteNote,
 }: FolderItemProps) {
   const isCollapsed = collapsedFolders.has(folder.path);
   const noteCount = countNotesInFolder(folder);
@@ -190,6 +261,10 @@ const FolderItemComponent = memo(function FolderItem({
                   onNewSubfolder={onNewSubfolder}
                   onRenameFolder={onRenameFolder}
                   onDeleteFolder={onDeleteFolder}
+                  onPinNote={onPinNote}
+                  onUnpinNote={onUnpinNote}
+                  onDuplicateNote={onDuplicateNote}
+                  onDeleteNote={onDeleteNote}
                 />
               ))}
               {folder.notes.map((note) => (
@@ -200,6 +275,10 @@ const FolderItemComponent = memo(function FolderItem({
                   isSelected={selectedNoteId === note.id}
                   isPinned={pinnedIds.has(note.id)}
                   onSelect={onSelectNote}
+                  onPin={onPinNote}
+                  onUnpin={onUnpinNote}
+                  onDuplicate={onDuplicateNote}
+                  onDelete={onDeleteNote}
                 />
               ))}
               {isEmpty && (
@@ -274,6 +353,10 @@ export function FolderTreeView({
     createFolder,
     deleteFolder,
     renameFolder,
+    pinNote,
+    unpinNote,
+    duplicateNote,
+    deleteNote,
   } = useNotes();
 
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
@@ -286,6 +369,8 @@ export function FolderTreeView({
   const [renameDefaultValue, setRenameDefaultValue] = useState("");
   const [subfolderDialogOpen, setSubfolderDialogOpen] = useState(false);
   const [subfolderParent, setSubfolderParent] = useState("");
+  const [noteDeleteDialogOpen, setNoteDeleteDialogOpen] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
   const [knownFolders, setKnownFolders] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -346,6 +431,23 @@ export function FolderTreeView({
     }
   }, [folderToDelete, deleteFolder]);
 
+  const openDeleteNoteDialog = useCallback((noteId: string) => {
+    setNoteToDelete(noteId);
+    setNoteDeleteDialogOpen(true);
+  }, []);
+
+  const handleNoteDeleteConfirm = useCallback(async () => {
+    if (noteToDelete) {
+      try {
+        await deleteNote(noteToDelete);
+      } catch (error) {
+        console.error("Failed to delete note:", error);
+      }
+      setNoteToDelete(null);
+      setNoteDeleteDialogOpen(false);
+    }
+  }, [noteToDelete, deleteNote]);
+
   const handleRenameConfirm = useCallback(
     async (newName: string) => {
       if (folderToRename) {
@@ -399,6 +501,10 @@ export function FolderTreeView({
             isSelected={selectedNoteId === note.id}
             isPinned={true}
             onSelect={selectNote}
+            onPin={pinNote}
+            onUnpin={unpinNote}
+            onDuplicate={duplicateNote}
+            onDelete={openDeleteNoteDialog}
           />
         ))}
 
@@ -419,6 +525,10 @@ export function FolderTreeView({
             onNewSubfolder={handleNewSubfolder}
             onRenameFolder={handleRenameFolder}
             onDeleteFolder={handleDeleteFolder}
+            onPinNote={pinNote}
+            onUnpinNote={unpinNote}
+            onDuplicateNote={duplicateNote}
+            onDeleteNote={openDeleteNoteDialog}
           />
         ))}
 
@@ -431,6 +541,10 @@ export function FolderTreeView({
             isSelected={selectedNoteId === note.id}
             isPinned={false}
             onSelect={selectNote}
+            onPin={pinNote}
+            onUnpin={unpinNote}
+            onDuplicate={duplicateNote}
+            onDelete={openDeleteNoteDialog}
           />
         ))}
       </div>
@@ -474,6 +588,28 @@ export function FolderTreeView({
         description="Enter a name for the new subfolder"
         confirmLabel="Create"
       />
+
+      {/* Delete note confirmation dialog */}
+      <AlertDialog
+        open={noteDeleteDialogOpen}
+        onOpenChange={setNoteDeleteDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete note?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the note and all its content. This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleNoteDeleteConfirm}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

@@ -132,11 +132,11 @@ interface NoteItemWithMenuProps {
   isSelected: boolean;
   isPinned: boolean;
   onSelect: (id: string) => void;
-  onPin: (id: string) => void;
-  onUnpin: (id: string) => void;
+  onPin: (id: string) => Promise<void>;
+  onUnpin: (id: string) => Promise<void>;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
-  onRefreshSettings: () => void;
+  onRefreshSettings: () => Promise<void> | void;
 }
 
 const NoteItemWithMenu = memo(function NoteItemWithMenu({
@@ -153,14 +153,10 @@ const NoteItemWithMenu = memo(function NoteItemWithMenu({
   onDelete,
   onRefreshSettings,
 }: NoteItemWithMenuProps) {
-  const handlePin = useCallback(() => {
+  const handlePin = useCallback(async () => {
     try {
-      if (isPinned) {
-        onUnpin(id);
-      } else {
-        onPin(id);
-      }
-      onRefreshSettings();
+      await (isPinned ? onUnpin(id) : onPin(id));
+      await onRefreshSettings();
     } catch (error) {
       console.error("Failed to pin/unpin note:", error);
     }

@@ -394,6 +394,38 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     async (oldPath: string, newName: string) => {
       try {
         await notesService.renameFolder(oldPath, newName);
+
+        // Compute new folder path
+        const lastSlash = oldPath.lastIndexOf("/");
+        const newPath =
+          lastSlash >= 0
+            ? `${oldPath.substring(0, lastSlash)}/${newName}`
+            : newName;
+        const oldPrefix = oldPath + "/";
+        const newPrefix = newPath + "/";
+
+        // Update selectedNoteId if it was inside the renamed folder
+        setSelectedNoteId((prevId) => {
+          if (prevId && prevId.startsWith(oldPrefix)) {
+            const newId = newPrefix + prevId.substring(oldPrefix.length);
+            // Re-load the note at its new ID
+            notesService.readNote(newId).then((note) => {
+              setCurrentNote(note);
+            });
+            return newId;
+          }
+          return prevId;
+        });
+
+        // Update activeFolderPath if it was the renamed folder or inside it
+        setActiveFolderPath((prev) => {
+          if (prev === oldPath) return newPath;
+          if (prev && prev.startsWith(oldPrefix)) {
+            return newPrefix + prev.substring(oldPrefix.length);
+          }
+          return prev;
+        });
+
         await refreshNotes();
       } catch (err) {
         setError(
