@@ -8,6 +8,7 @@ import { useNotes } from "../../context/NotesContext";
 import { buildFolderTree, countNotesInFolder } from "../../lib/folderTree";
 import { FolderNameDialog } from "./FolderNameDialog";
 import { cleanTitle } from "../../lib/utils";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -331,7 +332,7 @@ const FolderItemComponent = memo(function FolderItem({
                   className="text-sm text-text-muted/50 py-1 select-none"
                   style={{ paddingLeft: `${(depth + 1) * 12 + 24}px` }}
                 >
-                  No notes here
+                  Empty
                 </div>
               )}
             </div>
@@ -494,9 +495,14 @@ export function FolderTreeView({
 
   const handleDeleteConfirm = useCallback(async () => {
     if (folderToDelete) {
-      await deleteFolder(folderToDelete);
-      setFolderToDelete(null);
-      setDeleteDialogOpen(false);
+      try {
+        await deleteFolder(folderToDelete);
+        setFolderToDelete(null);
+        setDeleteDialogOpen(false);
+      } catch (error) {
+        console.error("Failed to delete folder:", error);
+        toast.error("Failed to delete folder");
+      }
     }
   }, [folderToDelete, deleteFolder]);
 
@@ -520,9 +526,14 @@ export function FolderTreeView({
   const handleRenameConfirm = useCallback(
     async (newName: string) => {
       if (folderToRename) {
-        await renameFolder(folderToRename, newName);
-        setFolderToRename(null);
-        setRenameDialogOpen(false);
+        try {
+          await renameFolder(folderToRename, newName);
+          setFolderToRename(null);
+          setRenameDialogOpen(false);
+        } catch (error) {
+          console.error("Failed to rename folder:", error);
+          toast.error("Failed to rename folder");
+        }
       }
     },
     [folderToRename, renameFolder],
@@ -530,10 +541,14 @@ export function FolderTreeView({
 
   const handleSubfolderConfirm = useCallback(
     async (name: string) => {
-      await createFolder(subfolderParent, name);
-      // Expand parent so the new subfolder is visible
-      expandFolder(subfolderParent);
-      setSubfolderDialogOpen(false);
+      try {
+        await createFolder(subfolderParent, name);
+        expandFolder(subfolderParent);
+        setSubfolderDialogOpen(false);
+      } catch (error) {
+        console.error("Failed to create subfolder:", error);
+        toast.error("Failed to create subfolder");
+      }
     },
     [subfolderParent, createFolder, expandFolder],
   );

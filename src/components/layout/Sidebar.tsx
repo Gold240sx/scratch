@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   DndContext,
@@ -86,32 +87,37 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
 
       const targetFolder = overData.path as string;
 
-      if (activeData.type === "note") {
-        const noteId = activeData.id as string;
-        const noteParent = noteId.includes("/")
-          ? noteId.substring(0, noteId.lastIndexOf("/"))
-          : "";
-        if (noteParent === targetFolder) return;
-        await moveNote(noteId, targetFolder);
-      } else if (activeData.type === "folder") {
-        const folderPath = activeData.path as string;
-        if (
-          targetFolder === folderPath ||
-          targetFolder.startsWith(folderPath + "/")
-        )
-          return;
-        const folderParent = folderPath.includes("/")
-          ? folderPath.substring(0, folderPath.lastIndexOf("/"))
-          : "";
-        if (folderParent === targetFolder) return;
-        await moveFolder(folderPath, targetFolder);
-      }
+      try {
+        if (activeData.type === "note") {
+          const noteId = activeData.id as string;
+          const noteParent = noteId.includes("/")
+            ? noteId.substring(0, noteId.lastIndexOf("/"))
+            : "";
+          if (noteParent === targetFolder) return;
+          await moveNote(noteId, targetFolder);
+        } else if (activeData.type === "folder") {
+          const folderPath = activeData.path as string;
+          if (
+            targetFolder === folderPath ||
+            targetFolder.startsWith(folderPath + "/")
+          )
+            return;
+          const folderParent = folderPath.includes("/")
+            ? folderPath.substring(0, folderPath.lastIndexOf("/"))
+            : "";
+          if (folderParent === targetFolder) return;
+          await moveFolder(folderPath, targetFolder);
+        }
 
-      // Expand target folder so the moved item is visible
-      if (targetFolder) {
-        window.dispatchEvent(
-          new CustomEvent("expand-folder", { detail: targetFolder }),
-        );
+        // Expand target folder so the moved item is visible
+        if (targetFolder) {
+          window.dispatchEvent(
+            new CustomEvent("expand-folder", { detail: targetFolder }),
+          );
+        }
+      } catch (error) {
+        console.error("Failed to move item:", error);
+        toast.error("Failed to move item");
       }
     },
     [moveNote, moveFolder],
@@ -121,6 +127,9 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
   useEffect(() => {
     notesService.getSettings().then((s) => {
       setFoldersEnabled(s.foldersEnabled === true);
+    }).catch((error) => {
+      console.error("Failed to load settings:", error);
+      setFoldersEnabled(false);
     });
   }, []);
 
@@ -212,8 +221,13 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
 
   const handleFolderDialogConfirm = useCallback(
     async (name: string) => {
-      await createFolder(folderDialogParent, name);
-      setFolderDialogOpen(false);
+      try {
+        await createFolder(folderDialogParent, name);
+        setFolderDialogOpen(false);
+      } catch (error) {
+        console.error("Failed to create folder:", error);
+        toast.error("Failed to create folder");
+      }
     },
     [createFolder, folderDialogParent],
   );

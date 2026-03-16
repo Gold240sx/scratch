@@ -1221,7 +1221,7 @@ fn validate_folder_path(path: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn list_folders(state: State<AppState>) -> Result<Vec<String>, String> {
+async fn list_folders(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let folder = {
         let app_config = state.app_config.read().expect("app_config read lock");
         app_config
@@ -1231,25 +1231,30 @@ fn list_folders(state: State<AppState>) -> Result<Vec<String>, String> {
     };
     let folder_path = PathBuf::from(&folder);
 
-    let mut folders = Vec::new();
-    use walkdir::WalkDir;
-    for entry in WalkDir::new(&folder_path)
-        .max_depth(10)
-        .into_iter()
-        .filter_entry(is_visible_notes_entry)
-        .flatten()
-    {
-        if entry.file_type().is_dir() && entry.path() != folder_path {
-            if let Ok(rel) = entry.path().strip_prefix(&folder_path) {
-                let rel_str = rel.to_string_lossy().replace('\\', "/");
-                if !rel_str.is_empty() {
-                    folders.push(rel_str);
+    let fp = folder_path.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut folders = Vec::new();
+        use walkdir::WalkDir;
+        for entry in WalkDir::new(&fp)
+            .max_depth(10)
+            .into_iter()
+            .filter_entry(is_visible_notes_entry)
+            .flatten()
+        {
+            if entry.file_type().is_dir() && entry.path() != fp {
+                if let Ok(rel) = entry.path().strip_prefix(&fp) {
+                    let rel_str = rel.to_string_lossy().replace('\\', "/");
+                    if !rel_str.is_empty() {
+                        folders.push(rel_str);
+                    }
                 }
             }
         }
-    }
-    folders.sort();
-    Ok(folders)
+        folders.sort();
+        folders
+    })
+    .await
+    .map_err(|e| format!("Failed to list folders: {}", e))
 }
 
 #[tauri::command]

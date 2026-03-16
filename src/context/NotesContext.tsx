@@ -421,9 +421,10 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         setSelectedNoteId((prevId) => {
           if (prevId && prevId.startsWith(oldPrefix)) {
             const newId = newPrefix + prevId.substring(oldPrefix.length);
-            // Re-load the note at its new ID
             notesService.readNote(newId).then((note) => {
               setCurrentNote(note);
+            }).catch((err) => {
+              setError(err instanceof Error ? err.message : "Failed to read renamed note");
             });
             return newId;
           }
@@ -449,6 +450,8 @@ export function NotesProvider({ children }: { children: ReactNode }) {
           if (prevId === id) {
             notesService.readNote(newId).then((note) => {
               setCurrentNote(note);
+            }).catch((err) => {
+              setError(err instanceof Error ? err.message : "Failed to read moved note");
             });
             return newId;
           }
@@ -466,6 +469,31 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     async (path: string, targetParent: string) => {
       try {
         await notesService.moveFolder(path, targetParent);
+
+        // Compute new folder path
+        const folderName = path.includes("/")
+          ? path.substring(path.lastIndexOf("/") + 1)
+          : path;
+        const newPath = targetParent
+          ? `${targetParent}/${folderName}`
+          : folderName;
+        const oldPrefix = path + "/";
+        const newPrefix = newPath + "/";
+
+        // Update selectedNoteId if it was inside the moved folder
+        setSelectedNoteId((prevId) => {
+          if (prevId && prevId.startsWith(oldPrefix)) {
+            const newId = newPrefix + prevId.substring(oldPrefix.length);
+            notesService.readNote(newId).then((note) => {
+              setCurrentNote(note);
+            }).catch((err) => {
+              setError(err instanceof Error ? err.message : "Failed to read moved note");
+            });
+            return newId;
+          }
+          return prevId;
+        });
+
         await refreshNotes();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to move folder");
