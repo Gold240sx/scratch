@@ -57,6 +57,7 @@ import { EditorWidthHandles } from "./EditorWidthHandle";
 import { ScratchBlockMath, normalizeBlockMath } from "./MathExtensions";
 import { cn } from "../../lib/utils";
 import { plainTextFromMarkdown } from "../../lib/plainText";
+import { editorBackgroundColors } from "../../lib/editorBackgroundColors";
 import { Button, IconButton, ToolbarButton, Tooltip } from "../ui";
 import * as notesService from "../../services/notes";
 import { downloadPdf, downloadMarkdown } from "../../services/pdf";
@@ -95,15 +96,6 @@ import {
   FolderPlusIcon,
   SwatchIcon,
 } from "../icons";
-
-const editorBackgroundOptions = [
-  "#FFF3B2",
-  "#F8D98A",
-  "#D9FCD1",
-  "#D2E8FD",
-  "#E0CCFF",
-  "#F8C6C7",
-] as const;
 
 function formatDateTime(timestamp: number): string {
   const date = new Date(timestamp * 1000);
@@ -487,12 +479,8 @@ export function Editor({
   const pinNote = notesCtx?.pinNote;
   const unpinNote = notesCtx?.unpinNote;
   const notes = notesCtx?.notes;
-  const {
-    textDirection,
-    resolvedTheme,
-    editorBackgroundColor,
-    setEditorBackgroundColor,
-  } = useTheme();
+  const { textDirection, editorBackgroundColor, setEditorBackgroundColor } =
+    useTheme();
   const [isSaving, setIsSaving] = useState(false);
   // Force re-render when selection changes to update toolbar active states
   const [, setSelectionKey] = useState(0);
@@ -1903,13 +1891,14 @@ export function Editor({
     );
   }
 
-  const effectiveEditorBgColor =
-    editorBackgroundColor ?? (resolvedTheme === "dark" ? "rgb(22, 20, 19)" : "#ffffff");
+  const editorBackgroundStyle = editorBackgroundColor
+    ? { backgroundColor: editorBackgroundColor }
+    : undefined;
 
   return (
     <div
       className="flex-1 flex flex-col bg-bg overflow-hidden"
-      style={{ backgroundColor: effectiveEditorBgColor }}
+      style={editorBackgroundStyle}
     >
       {/* Drag region with sidebar toggle, date and save status */}
       <div
@@ -2049,12 +2038,15 @@ export function Editor({
                     Editor Background
                   </p>
                   <div className="grid grid-cols-3 gap-2">
-                    {editorBackgroundOptions.map((color) => {
+                    {editorBackgroundColors.map((color) => {
                       const isSelected = editorBackgroundColor === color;
                       return (
                         <DropdownMenu.Item
                           key={color}
                           onSelect={() => setEditorBackgroundColor(color)}
+                          aria-label={`Set editor background color ${color}`}
+                          aria-checked={isSelected}
+                          role="menuitemradio"
                           className="outline-none rounded-md"
                         >
                           <div
